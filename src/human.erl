@@ -18,7 +18,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(state, {location=#point, needs, destination=#point, speed}).
 
 %%%===================================================================
 %%% API
