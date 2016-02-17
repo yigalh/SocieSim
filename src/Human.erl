@@ -1,5 +1,5 @@
 -module('Human').
-12345
+
 -behaviour(gen_fsm).
 
 %% API
