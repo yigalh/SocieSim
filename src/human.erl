@@ -1,6 +1,6 @@
 -module(human).
 -include("defines.hrl").
-%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%
 -behaviour(gen_fsm).
 
 %% API
@@ -30,8 +30,8 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link() -> {ok, pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
+-spec(start_link(term()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
+start_link([]) ->
   gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
