@@ -1,5 +1,5 @@
--module('Human').
--include("Defines.hrl").
+-module(human).
+-include("defines.hrl").
 
 -behaviour(gen_fsm).
 

@@ -1,4 +1,4 @@
--module('Quarter').
+-module(quarter).
 
 -behaviour(gen_server).
 
