@@ -1,4 +1,5 @@
 -module('Human').
+-include("Defines.hrl").
 
 -behaviour(gen_fsm).
 
