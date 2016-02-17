@@ -18,8 +18,6 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {location=#point, needs, destination=#point, speed}).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -50,11 +48,11 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(init(Args :: term()) ->
-  {ok, StateName :: atom(), StateData :: #state{}} |
-  {ok, StateName :: atom(), StateData :: #state{}, timeout() | hibernate} |
+  {ok, StateName :: atom(), StateData :: #humanState{}} |
+  {ok, StateName :: atom(), StateData :: #humanState{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-  {ok, state_name, #state{}}.
+  {ok, state_name, #humanState{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -67,11 +65,11 @@ init([]) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(state_name(Event :: term(), State :: #state{}) ->
-  {next_state, NextStateName :: atom(), NextState :: #state{}} |
-  {next_state, NextStateName :: atom(), NextState :: #state{},
+-spec(state_name(Event :: term(), State :: #humanState{}) ->
+  {next_state, NextStateName :: atom(), NextState :: #humanState{}} |
+  {next_state, NextStateName :: atom(), NextState :: #humanState{},
     timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
+  {stop, Reason :: term(), NewState :: #humanState{}}).
 state_name(_Event, State) ->
   {next_state, state_name, State}.
 
@@ -87,16 +85,16 @@ state_name(_Event, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(state_name(Event :: term(), From :: {pid(), term()},
-    State :: #state{}) ->
-  {next_state, NextStateName :: atom(), NextState :: #state{}} |
-  {next_state, NextStateName :: atom(), NextState :: #state{},
+    State :: #humanState{}) ->
+  {next_state, NextStateName :: atom(), NextState :: #humanState{}} |
+  {next_state, NextStateName :: atom(), NextState :: #humanState{},
     timeout() | hibernate} |
-  {reply, Reply, NextStateName :: atom(), NextState :: #state{}} |
-  {reply, Reply, NextStateName :: atom(), NextState :: #state{},
+  {reply, Reply, NextStateName :: atom(), NextState :: #humanState{}} |
+  {reply, Reply, NextStateName :: atom(), NextState :: #humanState{},
     timeout() | hibernate} |
-  {stop, Reason :: normal | term(), NewState :: #state{}} |
+  {stop, Reason :: normal | term(), NewState :: #humanState{}} |
   {stop, Reason :: normal | term(), Reply :: term(),
-    NewState :: #state{}}).
+    NewState :: #humanState{}}).
 state_name(_Event, _From, State) ->
   Reply = ok,
   {reply, Reply, state_name, State}.
@@ -111,11 +109,11 @@ state_name(_Event, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_event(Event :: term(), StateName :: atom(),
-    StateData :: #state{}) ->
-  {next_state, NextStateName :: atom(), NewStateData :: #state{}} |
-  {next_state, NextStateName :: atom(), NewStateData :: #state{},
+    StateData :: #humanState{}) ->
+  {next_state, NextStateName :: atom(), NewStateData :: #humanState{}} |
+  {next_state, NextStateName :: atom(), NewStateData :: #humanState{},
     timeout() | hibernate} |
-  {stop, Reason :: term(), NewStateData :: #state{}}).
+  {stop, Reason :: term(), NewStateData :: #humanState{}}).
 handle_event(_Event, StateName, State) ->
   {next_state, StateName, State}.
 
@@ -183,8 +181,8 @@ terminate(_Reason, _StateName, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(code_change(OldVsn :: term() | {down, term()}, StateName :: atom(),
-    StateData :: #state{}, Extra :: term()) ->
-  {ok, NextStateName :: atom(), NewStateData :: #state{}}).
+    StateData :: #humanState{}, Extra :: term()) ->
+  {ok, NextStateName :: atom(), NewStateData :: #humanState{}}).
 code_change(_OldVsn, StateName, State, _Extra) ->
   {ok, StateName, State}.
 
