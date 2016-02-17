@@ -1,6 +1,6 @@
 -module(human).
 -include("defines.hrl").
-
+%%%%%%%%%%%%%%%%%%%%%%%%
 -behaviour(gen_fsm).
 
 %% API
