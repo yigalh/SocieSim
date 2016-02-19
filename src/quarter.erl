@@ -13,8 +13,7 @@
   handle_cast/2,
   handle_info/2,
   terminate/2,
-  code_change/3,
-  human_status/1]).
+  code_change/3]).
 
 -define(SERVER, ?MODULE).
 
@@ -35,8 +34,6 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-get_resource(_Need) -> gen_server:call(?MODULE, {getRes}).
-human_status(_State) -> gen_server:call(?MODULE, {human_status}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -74,8 +71,6 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call({getRes}, _From, State) ->
-  {reply, #point{x=3,y=4}, State}.
 
 %%--------------------------------------------------------------------
 %% @private
