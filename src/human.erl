@@ -4,7 +4,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1]).
+-export([start_link/1, move_quarter/1, set_destination/2, start_couple/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -16,9 +16,7 @@
   %% STATES:
   get_resource_location/3,
   going_to_resource/3,
-  going_to_slot/3,
   wait_for_partner/3,
-  waiting_for_slot/3,
   consume/3]).
 
 -define(SERVER, ?MODULE).
@@ -36,9 +34,14 @@
 %% @end
 %%--------------------------------------------------------------------
 -spec(start_link(Args :: term()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
-start_link(Args) ->
-  gen_fsm:start_link({local, ?SERVER}, ?MODULE, Args, []).
+start_link(HumanState) ->
+  gen_fsm:start_link({local, ?SERVER}, ?MODULE, HumanState, []).
 
+set_destination(Pid, Location) -> gen_fsm:sync_send_event(Pid, {destination, Location}).
+
+move_quarter(Pid) -> gen_fsm:sync_send_event(Pid,move_quarter).
+
+start_couple(Pid) -> gen_fsm:sync_send_event(Pid,got_partner).
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -57,10 +60,10 @@ start_link(Args) ->
   {ok, StateName :: atom(), StateData :: #humanState{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init(HumanState) ->
-  MaxNeed = humanFuncs:get_max_intensity_need(HumanState),
+  MaxNeed = humanFuncs:get_max_intensity_need(HumanState#humanState.needs),
   quarter:get_resource(MaxNeed),
-  {ok, receive_resource, HumanState}.
-
+  timer:send_after(?HUMAN_REFRESH_TICK, tick),
+  {ok, consume, HumanState}.% receive_resource return
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -102,30 +105,29 @@ get_resource_location(_Event, State) ->
   {stop, Reason :: normal | term(), NewState :: #humanState{}} |
   {stop, Reason :: normal | term(), Reply :: term(),
     NewState :: #humanState{}}).
-get_resource_location({resource_location, P}, _From, State) ->
 
+get_resource_location({destination, P}, _From, State) ->
   Reply = ok,
-  {reply, Reply, state_name, State}.
+  {reply, Reply, going_to_resource, State#humanState{destination=P} }.
 %%todo - spec
-going_to_resource(_Event, _From, State) ->
+going_to_resource(arrived, _From, State) ->
   Reply = ok,
-  {reply, Reply, state_name, State}.
+  case State#humanState.pursuing of
+    mating  -> quarter:request_mate(), NextState = wait_for_partner;
+    friendship -> quarter:request_friend(), NextState = wait_for_partner;
+    _ ->  NextState =consume
+  end,
+  {reply, Reply, NextState, State}.
 %%todo - spec
-waiting_for_slot(_Event, _From, State) ->
+consume(fulfilled, _From, State) ->
   Reply = ok,
-  {reply, Reply, state_name, State}.
+  MaxNeed = humanFuncs:get_max_intensity_need(State#humanState.needs),
+  quarter:get_resource(MaxNeed),
+  {reply, Reply, get_resource_location, State#humanState{pursuing = MaxNeed}}.
 %%todo - spec
-consume(_Event, _From, {State, Need}) ->
+wait_for_partner(got_partner, _From, State) -> %% when getting to a partnership slot, and there is no partner yet
   Reply = ok,
-  {reply, Reply, state_name, {State, Need}}.
-%%todo - spec
-going_to_slot(_Event, _From, State) ->
-  Reply = ok,
-  {reply, Reply, state_name, State}.
-%%todo - spec
-wait_for_partner(_Event, _From, State) -> %% when getting to a partnership slot, and there is no partner yet
-  Reply = ok,
-  {reply, Reply, state_name, State}.
+  {reply, Reply, consume, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -180,13 +182,23 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_info(Info :: term(), StateName :: atom(),
-    StateData :: term()) ->
+    State :: term()) ->
   {next_state, NextStateName :: atom(), NewStateData :: term()} |
   {next_state, NextStateName :: atom(), NewStateData :: term(),
     timeout() | hibernate} |
   {stop, Reason :: normal | term(), NewStateData :: term()}).
-handle_info(_Info, StateName, State) ->
-  {next_state, StateName, State}.
+handle_info(tick, StateName, State) ->
+  io:format("tick!~n"),
+  {NewHumanState, Die, Full} = humanFuncs:update_needs(State, StateName),
+  case Die of
+    true -> io:format("Dead!"), bye; %% todo - death
+    _ -> timer:send_after(?HUMAN_REFRESH_TICK, tick)
+  end,
+  case Full of
+    true -> full;
+    _ -> ok
+  end,
+  {next_state, StateName, NewHumanState}.
 
 %%--------------------------------------------------------------------
 %% @private

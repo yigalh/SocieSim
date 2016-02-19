@@ -35,7 +35,7 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-get_resource(_Need) -> gen_server:call(?MODULE, {getRes}).
+get_resource(_Need) -> gen_server:cast(?MODULE, {getRes}).
 human_status(_State) -> gen_server:call(?MODULE, {human_status}).
 
 %%%===================================================================
@@ -74,7 +74,8 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call({getRes}, _From, State) ->
+handle_call({getRes}, From, State) ->
+  human:set_location(From, #point{x=3,y=4}),
   {reply, #point{x=3,y=4}, State}.
 
 %%--------------------------------------------------------------------
@@ -90,6 +91,7 @@ handle_call({getRes}, _From, State) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_cast(_Request, State) ->
   {noreply, State}.
+
 
 %%--------------------------------------------------------------------
 %% @private
