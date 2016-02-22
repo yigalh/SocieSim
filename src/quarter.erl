@@ -5,7 +5,7 @@
 
 
 %% API
--export([start_link/0, get_resource/1]).
+-export([start_link/0, get_resource/1, dead/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -35,8 +35,9 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-get_resource(_Need) -> gen_server:cast(?MODULE, {getRes}).
+get_resource(_Need) -> io:format("request resource~n"), gen_server:cast(?MODULE, {getRes,self()}).
 human_status(_State) -> gen_server:call(?MODULE, {human_status}).
+dead() -> ok.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -75,8 +76,9 @@ init([]) ->
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({getRes}, From, State) ->
-  human:set_location(From, #point{x=3,y=4}),
-  {reply, #point{x=3,y=4}, State}.
+  io:format("Quarter sent location~n"),
+  human:set_destination(From, #point{x=30,y=50}),
+  {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -89,7 +91,9 @@ handle_call({getRes}, From, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast(_Request, State) ->
+handle_cast({getRes,From}, State) ->
+  io:format("Quarter sent location~n"),
+  human:set_destination(From, #point{x=30,y=50}),
   {noreply, State}.
 
 
