@@ -4,7 +4,7 @@
 
 
 %% API
--export([get_max_intensity_need/1,get_human/0,update_needs/2, update_location/1]).
+-export([get_max_intensity_need/1,get_human/0,update_needs/2, update_location/1, all_needs/0]).
 
 get_max_intensity_need(Needs) ->
   {_, {MaxNeedName,_Val} } = lists:mapfoldl(
@@ -73,3 +73,5 @@ get_human() -> #humanState{location=#point{x=3,y=5},
           society=>#need{intensity=10,growRate=1,fulfillRate=1},
           friendship=>#need{intensity=30,growRate=1,fulfillRate=1}},
   destination=#point{x=5,y=6}, speed=20, pursuing = none, ref = make_ref()}.
+
+all_needs() -> [eat, drink, clean, mate, sleep, work, worship, society, friendship].

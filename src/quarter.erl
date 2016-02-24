@@ -17,7 +17,6 @@
 -define(SERVER, ?MODULE).
 
 %area of quarter, maps of human pid to record, map of all resource locations, pids of all quarters, a partner searcher
-%TODO - replace pids with register
 -record(state, {q_num,humans,resources, mate, friend}).
 
 %%%===================================================================
@@ -25,7 +24,7 @@
 %%%===================================================================
 
 human_died(Who) -> gen_server:cast(?MODULE, {human_died, Who}).
-human_born(Who) -> gen_server:cast(?MODULE, {human_born, Who}).
+human_born(Who) -> gen_server:cast(?MODULE, {human_born, Who}). %% TODO
 get_resource({Need,Pid}) -> gen_server:cast(?MODULE, {search_resource, {Need,Pid}}).
 request_mate(Pid) -> gen_server:cast(?MODULE, {human_request_mate, Pid}).
 request_friend(Pid) -> gen_server:cast(?MODULE, {human_request_friend, Pid}).
@@ -88,11 +87,9 @@ init([Q_Num, Humans, Resources]) ->
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
 
-% TODO - change calls to casts
 %this function handled a human that has died. notifies whoever needs and deletes him from record.
 handle_cast({human_died, Who}, State) -> %Who = human record, From = PID of human
   io:fwrite("sending to: ~p message: ~p~n", [manager,{human_died,Who}]),
-  % TODO - send to manager properly
   manager:human_died(Who),
   Friend = State#state.friend,
   Mate = State#state.mate,
@@ -112,8 +109,8 @@ handle_cast({human_born, Who},  State) ->
 
 handle_cast({search_resource, {Need, Pid}}, State) -> % Who = record of human, From = human PID
   %io:fwrite("'search resource': sending to: ~p message: ~p~n", [Pid,{new_location, maps:get(Need, State#state.resources)}]),
-  %human:set_destination(From,maps:get(Need, State#state.resources)),
-  human:set_destination(Pid,#point{x=30, y=100}),
+  human:set_destination(Pid,maps:get(Need, State#state.resources)),
+  %human:set_destination(Pid,#point{x=30, y=100}), FIXME - remove
   {noreply, State};
 
 %this function handles the need of coupling
@@ -145,7 +142,6 @@ handle_cast({human_update, Who}, State) ->
   case lists:member(Quarter, State#state.q_num) of
     true -> New = State#state{humans = maps:put(Who#humanState.ref, Who, State#state.humans)}; % still in this quarter
     false ->
-      %TODO - how do i send this to another quarter? following line or next? maybe use handle_info
       gen_server:call({global, Quarter}, {human_born, Who}),
       New = State#state{humans = maps:remove(Who#humanState.ref, State#state.humans)}
   end,

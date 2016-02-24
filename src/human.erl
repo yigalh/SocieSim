@@ -113,7 +113,7 @@ handle_info(tick, going_to_resource, State) ->
   io:format("~p >>>>>>>>>>>>>>>>>>>>>>>>>>>>~n",[going_to_resource]),
   {HumanState, Die, _Full} = humanFuncs:update_needs(State, going_to_resource),
   case Die of
-    true -> quarter:human_died(State),io:format("Dead!~n"), bye; %% todo - death
+    true -> quarter:human_died(State),io:format("Dead!~n"), bye;
     _ -> timer:send_after(?HUMAN_REFRESH_TICK, tick),
           {Location, Arrived} = humanFuncs:update_location(HumanState),
           NewHumanState= HumanState#humanState{location = Location},
@@ -134,7 +134,7 @@ handle_info(tick, consume, State) ->
   io:format("~p >>>>>>>>>>>>>>>>>>>>>>>>>>>>~n",[consume]),
   {NewHumanState, Die, Full} = humanFuncs:update_needs(State, consume),
   case Die of
-    true -> quarter:human_died(State),io:format("Dead!~n"), bye; %% todo - death
+    true -> quarter:human_died(State),io:format("Dead!~n"), bye;
     _ -> timer:send_after(?HUMAN_REFRESH_TICK, tick),
           case Full of
             true -> MaxNeed = humanFuncs:get_max_intensity_need(NewHumanState#humanState.needs),
@@ -151,7 +151,7 @@ handle_info(tick, StateName, State) ->
   io:format("~p >>>>>>>>>>>>>>>>>>>>>>>>>>>>~n",[StateName]),
   {NewHumanState, Die, _Full} = humanFuncs:update_needs(State, StateName),
   case Die of
-    true -> quarter:human_died(State), io:format("Dead!~n"), bye; %% todo - death
+    true -> quarter:human_died(State), io:format("Dead!~n"), bye;
     _ ->   quarter:update_human(NewHumanState), timer:send_after(?HUMAN_REFRESH_TICK, tick)
   end,
   {next_state, StateName, NewHumanState}.

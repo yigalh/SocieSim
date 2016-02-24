@@ -1,3 +1,4 @@
+%% all_needs() :: [eat, drink, clean, mate, sleep, work, worship, society, friendship].
 -record(point,{x,y}).
 -record(need,{intensity,growRate,fulfillRate}).
 -record(area,{p1=#point{},p2=#point{}}).
@@ -9,5 +10,8 @@
 -define(WORLD_WIDTH, 600).
 -define(WORLD_HEIGHT, 600).
 -define(POPULATION_SIZE, 10).
+-define(MAX_SPEED, 20).
+-define(MAX_FULFILL_RATE, 20).
+-define(MAX_GROW_RATE, 20).
+-define(RESOURCE_RADIUS, 20).
 
-%% Needs: eat, drink, clean, mate, sleep, work, worship, society, friendship
