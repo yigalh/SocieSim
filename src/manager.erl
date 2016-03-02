@@ -22,7 +22,7 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-%TODO
+% Humans: Map(ref=>humanState)
 update_humans(Humans) -> ok.
 human_died(Human) -> ok.
 %%--------------------------------------------------------------------
@@ -44,6 +44,7 @@ start_link() ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
+  timer:send_after(?QUARTER_REFRESH_TICK, tick),
   Humans = generate_humans([]),
   Resources = generate_resources(maps:new(), humanFuncs:all_needs()),
   HumansPerQuarter = getHumansPerQuarter(Humans),
@@ -81,6 +82,9 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
+handle_info(tick, State) ->
+  timer:send_after(?QUARTER_REFRESH_TICK, tick),
+  {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -107,7 +111,9 @@ generate_humans (HumansList) ->
     speed = uniform() * (?MAX_SPEED-1) + 1,
     destination = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
     pursuing = none,
-    ref = make_ref()},
+    ref = make_ref(),
+    gender = case uniform() > 0.5 of true-> male; false->female end,
+    partner = none},
   generate_humans([NewHuman|HumansList]).
 
 generate_needs() ->

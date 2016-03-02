@@ -4,7 +4,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1, move_quarter/1, set_destination/2, start_couple/1]).
+-export([start_link/1, move_quarter/1, set_destination/2, start_couple/2, get_human_state/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -15,9 +15,9 @@
   code_change/4,
   %% STATES:
   get_resource_location/2,
-%%  going_to_resource/3,
-  wait_for_partner/2
-%%  consume/3]
+  wait_for_partner/2,
+  consume/2,
+  stop_consuming/1
  ]).
 
 -define(SERVER, ?MODULE).
@@ -43,7 +43,11 @@ set_destination(Pid, Location) -> gen_fsm:send_event(Pid, {destination, Location
 
 move_quarter(Pid) -> gen_fsm:stop(Pid, move_quarter, infinity).
 
-start_couple(Pid) -> gen_fsm:send_event(Pid, got_partner).
+start_couple(Pid, PartnerPid) -> gen_fsm:send_event(Pid, {got_partner, PartnerPid}).
+
+stop_consuming(Pid)-> gen_fsm:send_event(Pid, {stop_consuming}).
+
+get_human_state(Pid) -> gen_fsm:sync_send_all_state_event(Pid, get_human_state).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -72,10 +76,15 @@ get_resource_location({destination, P}, State) ->
   io:format("Going to location: ~p~n",[P]),
   {next_state, going_to_resource, State#humanState{destination=P} }.
 
-wait_for_partner(got_partner, State) -> %% when getting to a partnership slot, and there is no partner yet
-  Reply = ok,
-  io:format("Got Partner~n"),
-  {next_state, consume, State}.
+wait_for_partner({got_partner, PartnerPid}, State) -> % start mating
+  io:format("Got Partner for mating~n"),
+  {next_state, consume, State#humanState{partner = PartnerPid}}.
+
+consume({stop_consuming}, State) ->
+  MaxNeed = humanFuncs:get_max_intensity_need(State#humanState.needs),
+  quarter:get_resource({MaxNeed, self()}),
+  {next_state, get_resource_location, State#humanState{pursuing = MaxNeed, partner = none}}.
+
 
 -spec(handle_event(Event :: term(), StateName :: atom(),
     StateData :: #humanState{}) ->
@@ -97,6 +106,8 @@ handle_event(timeout, StateName, State) -> %% send status
   {stop, Reason :: term(), Reply :: term(), NewStateData :: term()} |
   {stop, Reason :: term(), NewStateData :: term()}).
 
+handle_sync_event(get_human_state, _From, StateName, State) ->
+  {reply, State, StateName, State};
 handle_sync_event(_Event, _From, StateName, State) ->
   Reply = ok,
   {reply, Reply, StateName, State}.
@@ -121,7 +132,7 @@ handle_info(tick, going_to_resource, State) ->
           case Arrived of
             true -> io:format("Arrived~n"),
               case State#humanState.pursuing of
-                      mate  -> quarter:request_mate(self()), NextState = wait_for_partner;
+                      mate  -> quarter:request_mate(self(), State#humanState.gender), NextState = wait_for_partner;
                       friendship -> quarter:request_friend(self()), NextState = wait_for_partner;
                       _ ->  NextState =consume
                     end,
@@ -137,10 +148,16 @@ handle_info(tick, consume, State) ->
     true -> quarter:human_died(State),io:format("Dead!~n"), bye;
     _ -> timer:send_after(?HUMAN_REFRESH_TICK, tick),
           case Full of
-            true -> MaxNeed = humanFuncs:get_max_intensity_need(NewHumanState#humanState.needs),
+            true ->
+              case State#humanState.pursuing of
+                mate -> quarter:give_birth(self(), State#humanState.partner);
+                friendship -> quarter:end_friendship(self(), State#humanState.partner);
+                _->ok
+              end,
+              MaxNeed = humanFuncs:get_max_intensity_need(NewHumanState#humanState.needs),
               quarter:get_resource({MaxNeed, self()}),
               io:format("Need Fulfilled~n"),
-              quarter:update_human(NewHumanState#humanState{pursuing=MaxNeed}),
+              quarter:update_human(NewHumanState#humanState{pursuing=MaxNeed, partner = none}),
               {next_state, get_resource_location, NewHumanState#humanState{pursuing=MaxNeed}};
             false -> quarter:update_human(NewHumanState),
               {next_state, consume, NewHumanState}
