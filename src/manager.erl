@@ -17,7 +17,8 @@
 
 -define(SERVER, ?MODULE).
 % quarters = Map#{MonitorRef=>[Quarter numbers]}
--record(state, {stats, start_time, resources, quarters}).
+% nodes_alive = Map#{Quarter numbers => boolean()}
+-record(state, {stats, start_time, resources, quarters, nodes_alive}).
 
 %%%===================================================================
 %%% API
@@ -36,7 +37,7 @@ monitor_quarter(Pid,Q_Num) -> gen_server:cast({global,?MODULE},{monitor_quarter,
 -spec(start_link() ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-  io:format("************************* SOCIESIM *************************~n"),
+  print("************************* SOCIESIM *************************~n"),
   gen_server:start_link({global, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
@@ -57,16 +58,16 @@ init([]) ->
   lists:foreach(
     fun(Quarter) ->
       Node = node_name(Quarter),
-      Ping = net_adm:ping(Node),
-      case Ping of
+      case net_adm:ping(Node) of
         pong -> monitor_node(Node, true),
-          rpc:cast(Node, quarter, start_link, [{[Quarter], maps:get(Quarter, HumansPerQuarter), Resources}]);
+                spawn(fun()-> connect_node(Node, Quarter, maps:get(Quarter, HumansPerQuarter), Resources) end); %%compile and start_link quarter
         _ -> io:format("Manager has no connection with ~p~n",[Quarter])
       end
     end,
     [quarter1, quarter2, quarter3, quarter4]),
   graphics:start(Resources),
-  State = #state{stats = #stats{population = ?POPULATION_SIZE, deaths=0, avg_life_span=0}, start_time = erlang:date(), resources = Resources, quarters = maps:new()},
+  State = #state{stats = #stats{population = ?POPULATION_SIZE, deaths=0, avg_life_span=0}, start_time = erlang:date(),
+    resources = Resources, quarters = maps:new(), nodes_alive = #{quarter1=>false, quarter2=>false, quarter3=>false, quarter4=>false}},
   {ok, State}.
 
 
@@ -95,11 +96,12 @@ handle_cast({human_born, Human}, State) ->
 handle_cast({monitor_quarter,Pid,Q_Num}, State) ->
   MonitorRef = monitor(process, Pid),
   Quarters = State#state.quarters,
-  io:format("Monitoring ~p~n",[Q_Num]),
-  {noreply, State#state{quarters = Quarters#{MonitorRef => Q_Num}} };
+  NodesAlive = State#state.nodes_alive,
+  print("Monitoring ~p~n",[Q_Num]),
+  {noreply, State#state{quarters = Quarters#{MonitorRef => Q_Num}, nodes_alive = NodesAlive#{lists:last(Q_Num)=>true}} };
 
 handle_cast({human_died, Human}, State) ->
-  io:format("################# DEATH #################~n"),
+  print("################# DEATH #################~n"),
   ets:delete(graphic_ets,Human#humanState.ref),
   graphics:death(Human#humanState.location),
   Stats = State#state.stats,
@@ -109,7 +111,7 @@ handle_cast({human_died, Human}, State) ->
   {noreply, State#state{stats = NewStats} };
 
 handle_cast({update_humans, Humans, Quarter}, State) ->
-  io:format("~p sent ~p humans for update ~n",[Quarter, maps:size(Humans)]),
+  print("~p sent ~p humans for update ~n",[Quarter, maps:size(Humans)]),
   maps:fold(
     fun(Ref, Human, _Acc) ->
       ets:insert(graphic_ets,{Ref, Human})
@@ -129,31 +131,52 @@ handle_info(tick, State) ->
 %%    {deaths,State#state.stats#stats.deaths},
 %%    {avg_life_span,State#state.stats#stats.avg_life_span},
 %%    {time,erlang:now()}]),
-
   timer:send_after(?QUARTER_REFRESH_TICK, tick),
   {noreply, State};
+
+%% In case of quarter-server fall, handle_info({'DOWN',Ref,process,_,_}, State) will be called
+%% and in case of quarter-node fall, also handle_info({nodedown,Node}, State) will ber called.
+%% handle_info({raise_server,Quarter}, State) will ber call periodically until server is back
 handle_info({'DOWN',Ref,process,_,_}, State) ->
   Quarters = maps:get(Ref, State#state.quarters),
   HostQuarter = lists:last(Quarters),
-  io:format("******* quarter ~p down ********~n",[Quarters]),
+  print("******* Server ~p down ********~n",[Quarters]),
   Node = node_name(HostQuarter),
-  io:format("Linking: ~p~n",[Node]),
-  rpc:cast(Node, quarter, start_link, [{Quarters, [], State#state.resources}]), %% fixme - ping before
+  case net_adm:ping(Node) of
+    pong -> spawn(fun()-> connect_node(Node, lists:last(Quarters), [], State#state.resources) end ); %% compile and start_link quarter
+    _ -> no_connection
+  end,
+  timer:send_after(?QUARTER_REFRESH_TICK, {raise_server,HostQuarter}), %% this will run periodically, until quarter is up
   QuartersRefs = maps:filter(fun(Key,_Value)->Key/=Ref end, State#state.quarters), % remove ref
   {noreply, State#state{quarters = QuartersRefs}};
 
 handle_info({nodedown,Node}, State) ->
   QuarterName = quarter_from_mode(Node),
-  %% TODO remove monitor - ref of the node
-  io:format("******* Node ~p is down ********~n",[Node]),
-  case net_adm:ping(Node) of
-    pong -> rpc:cast(Node, quarter, start_link, [{[QuarterName], [], State#state.resources}]),timer:send_after(?QUARTER_REFRESH_TICK, {nodedown,Node}); %%fixme - add humans
-    _ -> timer:send_after(?QUARTER_REFRESH_TICK, {nodedown,Node})
+  print("******* Node ~p down ********~n",[QuarterName]),
+  NodesAlive = State#state.nodes_alive,
+  {noreply, State#state{nodes_alive = NodesAlive#{QuarterName:=false}}};
+
+handle_info({raise_server,Quarter}, State) ->
+  Node = node_name(Quarter),
+  case is_quarter_monitored(Quarter, State#state.quarters) of %% do this just if the server is not yet monitored, meaning it is still down
+    false ->
+      Humans = case maps:get(Quarter, State#state.nodes_alive) of
+                 true -> [];
+                 false -> quarter_humans(Quarter)
+               end,
+      print("Attempt raising ~p with ~p humans~n",[Quarter, length(Humans)]),
+      case net_adm:ping(Node) of
+        pong -> spawn(fun()-> connect_node(Node, Quarter, Humans, State#state.resources) end); %% compile and start_link quarter
+        _ -> no_connection
+      end,
+      timer:send_after(?QUARTER_REFRESH_TICK, {raise_server,Quarter});
+    true -> monitor_node(Node, true),print("Server ~p is up again",[Quarter])
   end,
   {noreply, State};
 
+
 handle_info(Info, State) ->
-  io:format("<<<<<<<<<<<<<  Manager got: ~p >>>>>>>>>>>>>>~n",[Info]),
+  print("<<<<<<<<<<<<<  Manager got: ~p >>>>>>>>>>>>>>~n",[Info]),
   {noreply, State}.
 
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
@@ -175,8 +198,8 @@ code_change(_OldVsn, State, _Extra) ->
 generate_humans (HumansList) when length(HumansList) == ?POPULATION_SIZE -> HumansList;
 generate_humans (HumansList) ->
   NewHuman = #humanState{
-%%    location = #point{x = 5, y = 5},%fixme delete
-    location = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
+    location = #point{x = 5, y = 5},%fixme delete
+%%    location = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
     needs = generate_needs(),
     speed = uniform() * (?MAX_SPEED-1) + 1,
     destination = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
@@ -184,7 +207,8 @@ generate_humans (HumansList) ->
     ref = make_ref(),
     gender = case uniform() > 0.5 of true-> male; false->female end,
     partner = none,
-    birth = erlang:now()},
+    birth = erlang:now(),
+    state = init}, % init will make the human search for resource
   ets:insert(graphic_ets,{NewHuman#humanState.ref, NewHuman}), %% save to ets
   generate_humans([NewHuman|HumansList]).
 
@@ -235,4 +259,40 @@ get_quarter(P) ->
 node_name(Module) -> list_to_atom(atom_to_list(Module) ++ atom_to_list('@')++atom_to_list(?HOST_NAME)).
 
 quarter_from_mode(Node) -> NodeList = atom_to_list(Node),
-  list_to_atom(lists:sublist(NodeList,7)).
+  list_to_atom(lists:sublist(NodeList,8)).
+
+print(Text) ->
+  case ?LOG_MANAGER of
+    true -> io:format(Text);
+    false -> ok
+  end.
+print(Text, Vars) ->
+  case ?LOG_MANAGER of
+    true -> io:format(Text, Vars);
+    false -> ok
+  end.
+
+is_quarter_monitored(Quarter, Monitored) -> %% return whether Quarter is monitored or not
+  lists:foldl(fun(Quarters,Ans) -> Ans or lists:member(Quarter,Quarters) end,
+    false, maps:values(Monitored)).
+
+quarter_humans(Quarter) -> %% Returns a list of humans in Quarter
+  HumansAsTuple = ets:tab2list(graphic_ets),
+  print("ets: ~p quarter:~p~n",[length(HumansAsTuple), Quarter]),
+  lists:foldl(
+    fun(HumanTuple,HumansPerQuarter) ->
+      Human = element(2,HumanTuple), % 1st is the ref, 2nd is the human
+      case get_quarter(Human#humanState.location) of
+        Quarter -> [Human|HumansPerQuarter]; %% add just humans in this quarter
+        _ -> HumansPerQuarter
+      end
+    end, [], HumansAsTuple).
+
+connect_node(Node, Quarter, Humans, Resources)->
+    try rpc:call(Node, c, cd, [atom_to_list(?PATH)]), rpc:call(Node, cover, compile_directory,[]),
+        rpc:cast(Node, quarter, start_link, [{[Quarter], Humans, Resources}]) of
+      _->print("Linking ~p~n",[Quarter])
+    catch
+      error:_Err -> print("Connection failed to ~p~n",[Node])
+    end.
+

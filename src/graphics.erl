@@ -101,7 +101,7 @@ init({Server,Resources}) ->
     %Canvas = wxGraphicsContext:create(Buffer),
     case T of
       8 -> ets:insert(general_ets, {stat,0}),
-        lists:foldl(fun(Entry,I) ->
+        lists:foldl(fun(_Entry,I) ->
           %fixme [{Property,Value}] = ets:lookup(statistics_ets, Entry),
           %fixme wxTextCtrl:new(Statistics,I,[{value,atom_to_list(Property)++": "++integer_to_list(Value)},{pos,{5,5+(30*I)}}]),
 
