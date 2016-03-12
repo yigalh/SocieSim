@@ -51,18 +51,18 @@ update_location(HumanState) ->
   YDist = HumanState#humanState.destination#point.y - HumanState#humanState.location#point.y,
   XDist = HumanState#humanState.destination#point.x - HumanState#humanState.location#point.x,
   DistanceFromDestination = math:sqrt(math:pow(YDist,2)+math:pow(XDist,2)),
-  io:format("Dist: ~p~n",[DistanceFromDestination]),
+  %io:format("~p Dist: ~p~n",[HumanState#humanState.ref, DistanceFromDestination]),
   case DistanceFromDestination =< HumanState#humanState.speed of
     true -> {HumanState#humanState.destination, true};
     false-> Angle = math:atan2(YDist,XDist),
       MoveX = HumanState#humanState.location#point.x + math:cos(Angle)*HumanState#humanState.speed,
       MoveY = HumanState#humanState.location#point.y + math:sin(Angle)*HumanState#humanState.speed,
-      io:format("point: (~p,~p)~n",[MoveX,MoveY]),
       {#point{x=MoveX,y=MoveY},false}
   end.
 
 
-get_human() -> #humanState{location=#point{x=3,y=5},
+get_human() %% create specific human for testing
+  -> #humanState{location=#point{x=3,y=5},
   needs=#{eat=>#need{intensity=10,growRate=1,fulfillRate=5},
           drink=>#need{intensity=10,growRate=3,fulfillRate=1},
           clean=>#need{intensity=10,growRate=1,fulfillRate=1},
