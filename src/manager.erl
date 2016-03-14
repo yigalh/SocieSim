@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, update_humans/2, human_died/1, human_born/1, monitor_quarter/2]).
+-export([start_link/0, update_humans/2, human_died/1, human_born/1, monitor_quarter/2, host_name/1, node_name/1, print_ets/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -13,7 +13,7 @@
   terminate/2,
   code_change/3]).
 
--import(random, [uniform/0, uniform/1]).
+-import(rand, [uniform/0, uniform/1]).
 
 -define(SERVER, ?MODULE).
 % quarters = Map#{MonitorRef=>[Quarter numbers]}
@@ -28,14 +28,7 @@ update_humans(Quarter, Humans) -> gen_server:cast({global,?MODULE}, {update_huma
 human_died(Human) -> gen_server:cast({global,?MODULE}, {human_died,Human}).
 human_born(Human) -> gen_server:cast({global,?MODULE}, {human_born,Human}).
 monitor_quarter(Pid,Q_Num) -> gen_server:cast({global,?MODULE},{monitor_quarter,Pid,Q_Num}).
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the server
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec(start_link() ->
-  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+print_ets() -> gen_server:cast({global,?MODULE},print_ets).
 start_link() ->
   print("************************* SOCIESIM *************************~n"),
   gen_server:start_link({global, ?SERVER}, ?MODULE, [], []).
@@ -44,11 +37,8 @@ start_link() ->
 %%% gen_server callbacks
 %%%===================================================================
 
--spec(init(Args :: term()) ->
-  {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term()} | ignore).
 init([]) ->
-  timer:send_after(?QUARTER_REFRESH_TICK, tick),
+  timer:send_after(?STATISTICS_REFRESH_TICK, tick),
   % todo - change ets name
   ets:new(graphic_ets, [set, named_table, public, {read_concurrency,true}]), %% will hold all humans in the world
   Humans = generate_humans([]),
@@ -61,7 +51,7 @@ init([]) ->
       case net_adm:ping(Node) of
         pong -> monitor_node(Node, true),
                 spawn(fun()-> connect_node(Node, Quarter, maps:get(Quarter, HumansPerQuarter), Resources) end); %%compile and start_link quarter
-        _ -> io:format("Manager has no connection with ~p~n",[Quarter])
+        _ -> print("Manager has no connection with ~p~n",[Quarter])
       end
     end,
     [quarter1, quarter2, quarter3, quarter4]),
@@ -71,21 +61,13 @@ init([]) ->
   {ok, State}.
 
 
--spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-    State :: #state{}) ->
-  {reply, Reply :: term(), NewState :: #state{}} |
-  {reply, Reply :: term(), NewState :: #state{}, timeout() | hibernate} |
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
-  {stop, Reason :: term(), NewState :: #state{}}).
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
 
--spec(handle_cast(Request :: term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
+handle_cast(print_ets, State) ->
+  io:format("ETS:~n"),
+  lists:foreach(fun(Val)->io:format("~p~n",[Val])end, ets:tab2list(graphic_ets)),
+  {noreply, State};
 handle_cast({human_born, Human}, State) ->
   ets:insert(graphic_ets,{Human#humanState.ref, Human}),
   graphics:birth(Human#humanState.location),
@@ -121,17 +103,14 @@ handle_cast({update_humans, Humans, Quarter}, State) ->
 handle_cast(_Request, State) ->
   {noreply, State}.
 
-  -spec(handle_info(Info :: timeout() | term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(tick, State) ->
-%%  graphics:update_statistics([
-%%    {population,State#state.stats#stats.population},
-%%    {deaths,State#state.stats#stats.deaths},
-%%    {avg_life_span,State#state.stats#stats.avg_life_span},
-%%    {time,erlang:now()}]),
-  timer:send_after(?QUARTER_REFRESH_TICK, tick),
+  graphics:update_statistics([
+    {population,State#state.stats#stats.population},
+    {deaths,State#state.stats#stats.deaths},
+    {avg_life_span,round(State#state.stats#stats.avg_life_span)}
+%%    {time,erlang:now()}
+    ]),
+  timer:send_after(?STATISTICS_REFRESH_TICK, tick),
   {noreply, State};
 
 %% In case of quarter-server fall, handle_info({'DOWN',Ref,process,_,_}, State) will be called
@@ -179,14 +158,9 @@ handle_info(Info, State) ->
   print("<<<<<<<<<<<<<  Manager got: ~p >>>>>>>>>>>>>>~n",[Info]),
   {noreply, State}.
 
--spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
-    State :: #state{}) -> term()).
 terminate(_Reason, _State) ->
   ok.
 
--spec(code_change(OldVsn :: term() | {down, term()}, State :: #state{},
-    Extra :: term()) ->
-  {ok, NewState :: #state{}} | {error, Reason :: term()}).
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
@@ -198,8 +172,8 @@ code_change(_OldVsn, State, _Extra) ->
 generate_humans (HumansList) when length(HumansList) == ?POPULATION_SIZE -> HumansList;
 generate_humans (HumansList) ->
   NewHuman = #humanState{
-    location = #point{x = 5, y = 5},%fixme delete
-%%    location = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
+%%    location = #point{x = 5, y = 5},%fixme delete
+    location = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
     needs = generate_needs(),
     speed = uniform() * (?MAX_SPEED-1) + 1,
     destination = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
@@ -216,7 +190,8 @@ generate_needs() ->
   lists:foldl(fun(Name, Acc) ->
     Acc#{Name=>#need{intensity = uniform(50), % max initial intensity is 50 so humans will not die immediately
       fulfillRate = uniform()*(?MAX_FULFILL_RATE-1) + 1,
-      growRate = uniform()*(?MAX_GROW_RATE-1) + 1}} end,
+      growRate = uniform()*(?MAX_GROW_RATE-1) + 1}}
+              end,
     maps:new(), humanFuncs:all_needs()).
 
 generate_resources(Resources, []) -> Resources;
@@ -224,17 +199,18 @@ generate_resources(Resources, [Need|Rest]) ->
   NewLocation = #point{x = uniform(?WORLD_WIDTH), y = uniform(?WORLD_HEIGHT)},
   Overlap = maps:fold(
     fun(_Name, Location, Overlap)-> %% Ans holds whether an overlap exists with other resources
-      Overlap or (distance(Location, NewLocation) < ?RESOURCE_RADIUS)
+      Overlap or (distance(Location, NewLocation) < (?RESOURCE_RADIUS+5))
     end, false, Resources),
   case Overlap or (distance(NewLocation, #point{x = 0, y = 0}) =< ?RESOURCE_RADIUS) % overlaps with world borders
   or (distance(NewLocation, #point{x = 0, y = ?WORLD_HEIGHT}) =< ?RESOURCE_RADIUS)
   or (distance(NewLocation, #point{x = ?WORLD_WIDTH, y = 0}) =< ?RESOURCE_RADIUS)
   or (distance(NewLocation, #point{x = ?WORLD_WIDTH, y = ?WORLD_HEIGHT}) =< ?RESOURCE_RADIUS)
+  or (abs(NewLocation#point.x - ?WORLD_HEIGHT/2) =< (?RESOURCE_RADIUS+5))
+    or (abs(NewLocation#point.y - ?WORLD_HEIGHT/2) =< (?RESOURCE_RADIUS+5))
   of
     true -> generate_resources(Resources, [Need|Rest]);
     false -> generate_resources(Resources#{Need => NewLocation}, Rest)
-  end
-  .
+  end.
 
 getHumansPerQuarter(Humans) ->
 lists:foldl(fun(Human,HumansPerQuarter) ->
@@ -256,7 +232,7 @@ get_quarter(P) ->
     {false, true}  -> quarter4
   end.
 
-node_name(Module) -> list_to_atom(atom_to_list(Module) ++ atom_to_list('@')++atom_to_list(?HOST_NAME)).
+node_name(Module) -> list_to_atom(atom_to_list(Module) ++ atom_to_list('@')++atom_to_list(host_name(Module))).
 
 quarter_from_mode(Node) -> NodeList = atom_to_list(Node),
   list_to_atom(lists:sublist(NodeList,8)).
@@ -295,4 +271,13 @@ connect_node(Node, Quarter, Humans, Resources)->
     catch
       error:_Err -> print("Connection failed to ~p~n",[Node])
     end.
+%%host_name(Who) ->
+%%  case Who of
+%%    quarter1 -> 'quarter1.local';
+%%    quarter2 -> 'quarter2.local';
+%%    quarter3 -> 'quarter2.local';
+%%    quarter4 -> 'quarter2.local';
+%%    manager -> '192.168.1.100'
+%%  end.
 
+host_name(_Who)->?HOST_NAME.

@@ -51,7 +51,6 @@ update_location(HumanState) ->
   YDist = HumanState#humanState.destination#point.y - HumanState#humanState.location#point.y,
   XDist = HumanState#humanState.destination#point.x - HumanState#humanState.location#point.x,
   DistanceFromDestination = math:sqrt(math:pow(YDist,2)+math:pow(XDist,2)),
-  %print("~p Dist: ~p~n",[HumanState#humanState.ref, DistanceFromDestination]),
   case DistanceFromDestination =< HumanState#humanState.speed of
     true -> {HumanState#humanState.destination, true};
     false-> Angle = math:atan2(YDist,XDist),
@@ -62,11 +61,6 @@ update_location(HumanState) ->
 
 all_needs() -> [eat, drink, clean, mate, sleep, work, worship, society, friendship].
 
-print(Text) ->
-  case ?LOG_HUMAN of
-    true -> io:format(Text);
-    false -> ok
-  end.
 print(Text, Vars) ->
   case ?LOG_HUMAN of
     true -> io:format(Text, Vars);
